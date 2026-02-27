@@ -1,0 +1,38 @@
+{
+  "name": "mermaid-render",
+  "version": "1.0.0",
+  "description": "HTTP API service for rendering Mermaid diagrams to SVG/PNG",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "keywords": [
+    "mermaid",
+    "diagram",
+    "render",
+    "api",
+    "svg",
+    "png"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@mermaid-js/mermaid-cli": "^10.6.1",
+    "cos-nodejs-sdk-v5": "^2.15.4",
+    "express": "^4.18.2",
+    "puppeteer-core": "^21.6.1",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "@types/uuid": "^9.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

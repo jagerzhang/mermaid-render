@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  mermaid-render:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mermaid-render:latest
+    container_name: mermaid-render
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # COS configuration (optional, for return=url feature)
+      - COS_SECRET_ID=${COS_SECRET_ID:-}
+      - COS_SECRET_KEY=${COS_SECRET_KEY:-}
+      - COS_BUCKET=${COS_BUCKET:-}
+      - COS_REGION=${COS_REGION:-}
+      - COS_BASE_URL=${COS_BASE_URL:-}
+      - COS_PATH_PREFIX=${COS_PATH_PREFIX:-mermaid/}
+    restart: unless-stopped
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    # Security options for Chromium
+    security_opt:
+      - seccomp:unconfined
+    # Health check is defined in Dockerfile, but can be overridden here
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

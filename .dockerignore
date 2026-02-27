@@ -1,0 +1,51 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Test files
+*.test.ts
+*.spec.ts
+__tests__
+coverage
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker files (prevent recursive build context)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# OpenSpec files
+openspec
+.codebuddy
+
+# Environment files
+.env
+.env.*
+
+# Temporary files
+tmp
+temp
+*.tmp
