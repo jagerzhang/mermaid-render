@@ -120,12 +120,18 @@ Content-Type: application/json
 | `code` | string | ✅ | - | Mermaid 图表代码 |
 | `format` | string | ❌ | `svg` | 输出格式: `svg`, `png`, `pdf` |
 | `theme` | string | ❌ | `default` | 主题: `default`, `forest`, `dark`, `neutral` |
-| `width` | number | ❌ | auto | 输出宽度（像素） |
-| `height` | number | ❌ | auto | 输出高度（像素） |
 | `backgroundColor` | string | ❌ | `white` | 背景颜色 |
+| `scale` | number | ❌ | `1` | 清晰度倍数 (1-3)，推荐 `2` 获得高清图片 |
 | `return` | string | ❌ | `binary` | 返回格式: `binary`, `base64`, `url` |
 | `urlType` | string | ❌ | 全局配置 | URL 类型: `internal`(内网), `external`(外网) |
 | `expires` | number | ❌ | `0` | 签名URL有效期（秒），0表示永久URL |
+
+> **关于 `scale` 参数**：
+> - `scale=1`：标准清晰度（默认）
+> - `scale=2`：2倍清晰度，输出图片物理尺寸翻倍（推荐，适合高 DPI 屏幕）
+> - `scale=3`：3倍清晰度，输出图片物理尺寸为原来的 3 倍
+> 
+> 示例：图表原始尺寸 400×300，设置 `scale=2` 后输出图片为 **800×600** 像素
 
 #### 返回格式说明
 
@@ -307,6 +313,35 @@ curl -X POST http://localhost:3000/api/mermaid/generate \
 
 ---
 
+#### 示例 7：生成高清 PNG（使用 scale 参数）
+
+```bash
+# 生成 2x 高清图片
+curl -X POST http://localhost:3000/api/mermaid/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "graph TD\n    A[开始] --> B{条件}\n    B -->|是| C[执行]\n    B -->|否| D[跳过]\n    C --> E[结束]\n    D --> E",
+    "format": "png",
+    "scale": 2
+  }' \
+  -o chart-2x.png
+```
+
+**scale 参数效果**：图片清晰度和物理尺寸都会翻倍
+
+| scale 值 | 效果 | 适用场景 |
+|----------|------|----------|
+| `1` (默认) | 标准清晰度 | 普通网页展示 |
+| `2` (推荐) | 2x 高清，尺寸翻倍 | 高 DPI 屏幕、需要清晰图片 |
+| `3` | 3x 超清，尺寸 3 倍 | 打印、高精度需求 |
+
+**示例**：图表原始尺寸 400×300
+- `scale=1` → 输出 400×300 像素
+- `scale=2` → 输出 **800×600** 像素（2x 高清）
+- `scale=3` → 输出 **1200×900** 像素（3x 超清）
+
+---
+
 ### 3. 兼容接口（mermaid.ink 格式）
 
 提供与 [mermaid.ink](https://mermaid.ink) 兼容的 URL 格式，方便迁移。
@@ -342,9 +377,7 @@ GET /pdf/{base64_encoded_code}?theme=default&return=binary
 | `type` | string | `png` | 图片类型 (仅 /img 有效) |
 | `theme` | string | `default` | 主题 |
 | `bgColor` | string | - | 背景色 (如 `FF0000` 或 `!white`) |
-| `width` | number | auto | 宽度 |
-| `height` | number | auto | 高度 |
-| `scale` | number | 1 | 缩放倍数 (1-3) |
+| `scale` | number | 1 | 清晰度倍数 (1-3)，推荐 2 获得高清图片 |
 | `return` | string | `binary` | 返回格式: `binary`, `base64`, `url` |
 | `urlType` | string | - | URL 类型: `internal`, `external` |
 | `expires` | number | `0` | 签名URL有效期（秒），0表示永久URL |

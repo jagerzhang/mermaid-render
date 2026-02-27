@@ -19,6 +19,8 @@ export interface GenerateOptions {
   width?: number;
   height?: number;
   backgroundColor?: string;
+  /** 缩放倍数（1-3），用于提高清晰度。默认 1，推荐 2 获得高清图片 */
+  scale?: number;
 }
 
 export interface GenerateResult {
@@ -66,6 +68,7 @@ async function generateMermaidDiagramCLI(options: GenerateOptions): Promise<Gene
     width,
     height,
     backgroundColor = 'white',
+    scale = 1,
   } = options;
 
   // Create temporary directory for this render
@@ -149,6 +152,10 @@ async function generateMermaidDiagramCLI(options: GenerateOptions): Promise<Gene
     }
     if (height) {
       command += ` -H ${height}`;
+    }
+    // scale 参数控制输出图片的缩放倍数，用于提高清晰度
+    if (scale && scale > 1) {
+      command += ` -s ${Math.min(scale, 3)}`; // mmdc 的 -s 参数
     }
 
     // Execute mmdc with timeout

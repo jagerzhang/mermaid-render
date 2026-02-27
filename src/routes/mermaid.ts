@@ -56,6 +56,7 @@ interface GenerateRequestBody {
   return?: string;  // Return format: binary, base64, url
   urlType?: string; // URL type for COS: internal, external
   expires?: number | string; // Signed URL expiration in seconds (for return=url)
+  scale?: number | string; // Scale factor for image resolution (1-3)
 }
 
 /**
@@ -66,12 +67,13 @@ interface GenerateRequestBody {
  * - code: Mermaid diagram code (required)
  * - format: Output format (svg, png, pdf). Default: svg
  * - theme: Mermaid theme (default, forest, dark, neutral). Default: default
- * - width: Image width
- * - height: Image height
+ * - width: Image width (viewport width, not forced scaling)
+ * - height: Image height (viewport height, not forced scaling)
  * - backgroundColor: Background color
  * - return: Return format (binary, base64, url). Default: binary
  * - urlType: URL type for COS (internal, external). Default: use global config
  * - expires: Signed URL expiration in seconds (for return=url). Default: 0 (permanent URL)
+ * - scale: Scale factor for image resolution (1-3). Default: 1. Use 2 for high-DPI images
  */
 router.post('/generate', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -173,9 +175,21 @@ router.post('/generate', async (req: Request, res: Response, next: NextFunction)
       return;
     }
 
+    // Parse scale (1-3)
+    const parsedScale = body.scale ? parseFloat(String(body.scale)) : undefined;
+    if (parsedScale !== undefined && (isNaN(parsedScale) || parsedScale < 1 || parsedScale > 3)) {
+      res.status(400).json({
+        code: 400,
+        message: 'Scale must be a number between 1 and 3',
+        data: null,
+      });
+      return;
+    }
+
     const outputFormat = (format as MermaidFormat) || 'svg';
     const outputTheme = (theme as MermaidTheme) || 'default';
     const bgColor = backgroundColor || 'white';
+    const outputScale = parsedScale ?? 1;
 
     // 生成缓存 key（基于所有影响渲染结果的参数）
     const cacheKey = generateCacheKey({
@@ -185,6 +199,7 @@ router.post('/generate', async (req: Request, res: Response, next: NextFunction)
       width: parsedWidth,
       height: parsedHeight,
       backgroundColor: bgColor,
+      scale: outputScale,
     });
 
     // 对于 return=url，先检查 COS 是否已存在（最快路径）
@@ -226,6 +241,7 @@ router.post('/generate', async (req: Request, res: Response, next: NextFunction)
       width: parsedWidth,
       height: parsedHeight,
       backgroundColor: bgColor,
+      scale: outputScale,
     });
 
     if (localCache) {
@@ -243,6 +259,7 @@ router.post('/generate', async (req: Request, res: Response, next: NextFunction)
         width: parsedWidth,
         height: parsedHeight,
         backgroundColor: bgColor,
+        scale: outputScale,
       });
       
       renderData = result.data;
@@ -257,6 +274,7 @@ router.post('/generate', async (req: Request, res: Response, next: NextFunction)
           width: parsedWidth,
           height: parsedHeight,
           backgroundColor: bgColor,
+          scale: outputScale,
         }, renderData).catch((err) => {
           console.error('[Cache] Save error:', err);
         });

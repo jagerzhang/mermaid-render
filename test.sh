@@ -590,6 +590,130 @@ else
 fi
 echo ""
 
+# 测试 22: 高清图片 - scale=2
+echo "📋 测试 22: 高清图片 - scale=2 (2x 清晰度)"
+START=$(get_time_ms)
+curl -s -X POST "$BASE_URL/api/mermaid/generate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "graph TD\n    A[开始] --> B{条件判断}\n    B -->|是| C[执行操作A]\n    B -->|否| D[执行操作B]\n    C --> E[结束]\n    D --> E",
+    "format": "png",
+    "scale": 2
+  }' \
+  -o "$OUTPUT_DIR/scale-2x.png"
+END=$(get_time_ms)
+DURATION=$((END - START))
+
+if [ -s "$OUTPUT_DIR/scale-2x.png" ]; then
+    SIZE=$(wc -c < "$OUTPUT_DIR/scale-2x.png")
+    if command -v identify &> /dev/null; then
+        DIMENSIONS=$(identify -format "%wx%h" "$OUTPUT_DIR/scale-2x.png" 2>/dev/null)
+        echo "   ✅ 2x 高清图片生成成功: $SIZE bytes, 尺寸: $DIMENSIONS [$(format_duration $DURATION)]"
+    else
+        echo "   ✅ 2x 高清图片生成成功: $SIZE bytes [$(format_duration $DURATION)]"
+    fi
+else
+    echo "   ❌ 高清图片生成失败 [$(format_duration $DURATION)]"
+fi
+echo ""
+
+# 测试 23: 对比测试 - scale=1 vs scale=2
+echo "📋 测试 23: 对比测试 - scale=1 vs scale=2"
+# scale=1 (默认)
+START1=$(get_time_ms)
+curl -s -X POST "$BASE_URL/api/mermaid/generate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "graph LR\n    A[Scale对比] --> B[测试]",
+    "format": "png",
+    "scale": 1
+  }' \
+  -o "$OUTPUT_DIR/compare-1x.png"
+END1=$(get_time_ms)
+DURATION1=$((END1 - START1))
+
+# scale=2
+START2=$(get_time_ms)
+curl -s -X POST "$BASE_URL/api/mermaid/generate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "graph LR\n    A[Scale对比] --> B[测试]",
+    "format": "png",
+    "scale": 2
+  }' \
+  -o "$OUTPUT_DIR/compare-2x.png"
+END2=$(get_time_ms)
+DURATION2=$((END2 - START2))
+
+if [ -s "$OUTPUT_DIR/compare-1x.png" ] && [ -s "$OUTPUT_DIR/compare-2x.png" ]; then
+    SIZE1=$(wc -c < "$OUTPUT_DIR/compare-1x.png")
+    SIZE2=$(wc -c < "$OUTPUT_DIR/compare-2x.png")
+    echo "   ✅ 对比测试完成"
+    echo "      scale=1: $SIZE1 bytes [$(format_duration $DURATION1)]"
+    echo "      scale=2: $SIZE2 bytes [$(format_duration $DURATION2)]"
+    
+    if command -v identify &> /dev/null; then
+        DIM1=$(identify -format "%wx%h" "$OUTPUT_DIR/compare-1x.png" 2>/dev/null)
+        DIM2=$(identify -format "%wx%h" "$OUTPUT_DIR/compare-2x.png" 2>/dev/null)
+        echo "      scale=1 尺寸: $DIM1"
+        echo "      scale=2 尺寸: $DIM2 (应为 scale=1 的 2 倍)"
+        
+        # 验证尺寸是否翻倍
+        W1=$(echo "$DIM1" | cut -d'x' -f1)
+        W2=$(echo "$DIM2" | cut -d'x' -f1)
+        EXPECTED=$((W1 * 2))
+        if [ "$W2" -eq "$EXPECTED" ]; then
+            echo "      ✅ 尺寸验证通过: $W1 × 2 = $W2"
+        else
+            echo "      ⚠️  尺寸验证: 预期 $EXPECTED，实际 $W2"
+        fi
+    fi
+else
+    echo "   ❌ 对比测试失败"
+fi
+echo ""
+
+# 测试 24: 超清图片 - scale=3
+echo "📋 测试 24: 超清图片 - scale=3 (3x 清晰度)"
+START=$(get_time_ms)
+curl -s -X POST "$BASE_URL/api/mermaid/generate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "graph LR\n    A[Scale对比] --> B[测试]",
+    "format": "png",
+    "scale": 3
+  }' \
+  -o "$OUTPUT_DIR/compare-3x.png"
+END=$(get_time_ms)
+DURATION=$((END - START))
+
+if [ -s "$OUTPUT_DIR/compare-3x.png" ]; then
+    SIZE=$(wc -c < "$OUTPUT_DIR/compare-3x.png")
+    if command -v identify &> /dev/null; then
+        DIM3=$(identify -format "%wx%h" "$OUTPUT_DIR/compare-3x.png" 2>/dev/null)
+        # 与 1x 对比
+        if [ -s "$OUTPUT_DIR/compare-1x.png" ]; then
+            DIM1=$(identify -format "%wx%h" "$OUTPUT_DIR/compare-1x.png" 2>/dev/null)
+            W1=$(echo "$DIM1" | cut -d'x' -f1)
+            W3=$(echo "$DIM3" | cut -d'x' -f1)
+            EXPECTED=$((W1 * 3))
+            echo "   ✅ 3x 超清图片生成成功: $SIZE bytes, 尺寸: $DIM3 [$(format_duration $DURATION)]"
+            if [ "$W3" -eq "$EXPECTED" ]; then
+                echo "      ✅ 尺寸验证通过: $W1 × 3 = $W3"
+            else
+                echo "      ⚠️  尺寸验证: 预期 $EXPECTED，实际 $W3"
+            fi
+        else
+            echo "   ✅ 3x 超清图片生成成功: $SIZE bytes, 尺寸: $DIM3 [$(format_duration $DURATION)]"
+        fi
+    else
+        echo "   ✅ 3x 超清图片生成成功: $SIZE bytes [$(format_duration $DURATION)]"
+    fi
+else
+    echo "   ❌ 超清图片生成失败 [$(format_duration $DURATION)]"
+fi
+echo ""
+
 # 计算总耗时
 TOTAL_END=$(date +%s%3N)
 TOTAL_DURATION=$((TOTAL_END - TOTAL_START))

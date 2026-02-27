@@ -7,9 +7,6 @@
  * - 支持并发渲染（多个 Page 并行工作）
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
 import { Page } from 'puppeteer-core';
 import { browserPool } from './browser-pool';
 
@@ -20,9 +17,18 @@ export interface GenerateOptions {
   code: string;
   format?: MermaidFormat;
   theme?: MermaidTheme;
+  /** @deprecated Mermaid 图表宽度由内容自动计算，此参数暂不生效 */
   width?: number;
+  /** @deprecated Mermaid 图表高度由内容自动计算，此参数暂不生效 */
   height?: number;
   backgroundColor?: string;
+  /** 
+   * 清晰度倍数 (1-3)，用于生成高清图片
+   * - scale=1: 标准清晰度（默认）
+   * - scale=2: 2倍清晰度（推荐，适合高 DPI 屏幕）
+   * - scale=3: 3倍清晰度（超清）
+   */
+  scale?: number;
 }
 
 export interface GenerateResult {
@@ -39,10 +45,18 @@ const RENDER_TIMEOUT = parseInt(process.env.RENDER_TIMEOUT ?? '30000', 10);
 // Mermaid CDN URL（使用 CDN 加载 mermaid.js）
 const MERMAID_CDN_URL = process.env.MERMAID_CDN_URL ?? 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
 
+interface MermaidHtmlOptions {
+  code: string;
+  theme: MermaidTheme;
+  backgroundColor: string;
+}
+
 /**
  * 生成 Mermaid 图表的 HTML 页面
  */
-function generateMermaidHtml(code: string, theme: MermaidTheme, backgroundColor: string): string {
+function generateMermaidHtml(options: MermaidHtmlOptions): string {
+  const { code, theme, backgroundColor } = options;
+  
   // 转义代码中的特殊字符
   const escapedCode = code
     .replace(/&/g, '&amp;')
@@ -93,16 +107,23 @@ function generateMermaidHtml(code: string, theme: MermaidTheme, backgroundColor:
 
 /**
  * 使用 Browser Pool 生成 Mermaid 图表
+ * 
+ * 清晰度控制：
+ * - scale 参数通过 Puppeteer 的 deviceScaleFactor 实现
+ * - scale=2 会生成 2x 分辨率的图片（物理尺寸翻倍，清晰度更高）
+ * - 重要：必须在 Mermaid 渲染之前设置 deviceScaleFactor
  */
 export async function generateMermaidDiagram(options: GenerateOptions): Promise<GenerateResult> {
   const {
     code,
     format = 'svg',
     theme = 'default',
-    width,
-    height,
     backgroundColor = 'white',
+    scale = 1,
   } = options;
+
+  // 限制 scale 范围 1-3
+  const deviceScale = Math.max(1, Math.min(scale, 3));
 
   const startTime = Date.now();
   let page: Page | null = null;
@@ -111,11 +132,18 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
     // 从池中获取 Page
     page = await browserPool.acquirePage();
     
+    // 关键：在加载页面之前设置 viewport 和 deviceScaleFactor
+    // 这样 Mermaid 渲染时就会使用正确的设备像素比
+    await page.setViewport({
+      width: 1920,
+      height: 1080,
+      deviceScaleFactor: deviceScale,
+    });
+    
     // 生成 HTML 并加载
-    const html = generateMermaidHtml(code, theme, backgroundColor);
+    const html = generateMermaidHtml({ code, theme, backgroundColor });
     
     // 使用 data URL 加载 HTML（避免写文件）
-    // 注意：如果 HTML 太大可能需要写入临时文件
     const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
     
     await page.goto(dataUrl, {
@@ -137,7 +165,6 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
 
     if (format === 'svg') {
       // 获取 SVG 内容
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const svgContent = await page.evaluate((): string | null => {
         const svg = document.querySelector('.mermaid svg');
         if (!svg) return null;
@@ -158,13 +185,13 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
         throw new Error('Failed to get SVG bounding box');
       }
 
-      // 设置视口大小
-      const viewportWidth = width ?? Math.ceil(boundingBox.width) + 40;
-      const viewportHeight = height ?? Math.ceil(boundingBox.height) + 40;
+      const viewportWidth = Math.ceil(boundingBox.width) + 40;
+      const viewportHeight = Math.ceil(boundingBox.height) + 40;
       
       await page.setViewport({
         width: viewportWidth,
         height: viewportHeight,
+        deviceScaleFactor: deviceScale,
       });
 
       // 生成 PDF
@@ -177,24 +204,8 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
       
       contentType = 'application/pdf';
     } else {
-      // PNG: 截取 SVG 元素
-      const boundingBox = await svgElement.boundingBox();
-      
-      if (!boundingBox) {
-        throw new Error('Failed to get SVG bounding box');
-      }
-
-      // 设置视口大小
-      const viewportWidth = width ?? Math.ceil(boundingBox.width) + 40;
-      const viewportHeight = height ?? Math.ceil(boundingBox.height) + 40;
-      
-      await page.setViewport({
-        width: viewportWidth,
-        height: viewportHeight,
-        deviceScaleFactor: 2, // 2x 分辨率
-      });
-
-      // 截图
+      // PNG: deviceScaleFactor 已在页面加载前设置
+      // 直接对 SVG 元素截图，截图会自动应用 deviceScaleFactor
       data = await svgElement.screenshot({
         type: 'png',
         omitBackground: backgroundColor === 'transparent',
@@ -204,7 +215,7 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[MermaidPooled] Rendered ${format} in ${duration}ms`);
+    console.log(`[MermaidPooled] Rendered ${format} (scale=${deviceScale}) in ${duration}ms`);
 
     return { data, contentType };
 
@@ -217,7 +228,6 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
     if (page) {
       try {
         // 清理页面状态（准备复用）
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await page.evaluate((): void => {
           document.body.innerHTML = '';
         });

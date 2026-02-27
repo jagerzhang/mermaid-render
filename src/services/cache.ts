@@ -28,6 +28,8 @@ export interface CacheKey {
   width?: number;
   height?: number;
   backgroundColor?: string;
+  /** 缩放倍数，影响清晰度 */
+  scale?: number;
 }
 
 export interface CacheResult {
@@ -50,7 +52,7 @@ async function ensureCacheDir(): Promise<void> {
 
 /**
  * 根据参数生成缓存 key (MD5)
- * 使用 code + format + theme + width + height + backgroundColor 生成唯一标识
+ * 使用 code + format + theme + width + height + backgroundColor + scale 生成唯一标识
  */
 export function generateCacheKey(options: CacheKey): string {
   const {
@@ -60,6 +62,7 @@ export function generateCacheKey(options: CacheKey): string {
     width,
     height,
     backgroundColor = 'white',
+    scale = 1,
   } = options;
   
   // 组合所有影响渲染结果的参数
@@ -70,6 +73,7 @@ export function generateCacheKey(options: CacheKey): string {
     width: width || null,
     height: height || null,
     backgroundColor,
+    scale,
   });
   
   return crypto.createHash('md5').update(keyContent).digest('hex');
