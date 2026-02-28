@@ -170,24 +170,9 @@ function generateMermaidHtml(options: MermaidHtmlOptions): string {
       align-items: center !important;
       gap: 4px !important;
     }
-    /* 边缘标签样式修复 - 使用与页面一致的背景色 */
-    .mermaid .edgeLabel {
-      background-color: ${backgroundColor} !important;
-    }
-    .mermaid .edgeLabel rect {
-      fill: ${backgroundColor} !important;
-      background-color: ${backgroundColor} !important;
-    }
+    /* 边缘标签中的 FA 图标样式（保留 Mermaid 默认的灰色背景 #e8e8e8） */
     .mermaid .edgeLabel .svg-inline--fa {
       margin: 0 2px;
-      background: transparent !important;
-    }
-    /* edgeLabel span 透明背景 */
-    .mermaid .edgeLabel span {
-      background-color: transparent !important;
-    }
-    .mermaid .labelBkg {
-      background-color: ${backgroundColor} !important;
     }
   </style>
 </head>
