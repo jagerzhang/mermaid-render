@@ -23,10 +23,14 @@ export interface GenerateOptions {
   height?: number;
   backgroundColor?: string;
   /** 
-   * 清晰度倍数 (1-3)，用于生成高清图片
+   * 清晰度倍数 (1-10)，用于生成高清图片
    * - scale=1: 标准清晰度（默认）
    * - scale=2: 2倍清晰度（推荐，适合高 DPI 屏幕）
    * - scale=3: 3倍清晰度（超清）
+   * - scale=4-10: 更高清晰度（用于打印等场景）
+   * 
+   * 注意：如果 scale 导致输出图片超过 MAX_WIDTH/MAX_HEIGHT 限制，
+   * 会自动降低 scale 以确保输出不超限
    */
   scale?: number;
 }
@@ -44,6 +48,14 @@ const RENDER_TIMEOUT = parseInt(process.env.RENDER_TIMEOUT ?? '30000', 10);
 
 // Mermaid CDN URL（使用 CDN 加载 mermaid.js）
 const MERMAID_CDN_URL = process.env.MERMAID_CDN_URL ?? 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
+
+// 最大图片尺寸限制（参考 mermaid.ink 默认 10000x10000）
+const MAX_WIDTH = parseInt(process.env.MAX_WIDTH ?? '10000', 10);
+const MAX_HEIGHT = parseInt(process.env.MAX_HEIGHT ?? '10000', 10);
+
+// scale 范围限制
+const MIN_SCALE = 1;
+const MAX_SCALE = 10;
 
 interface MermaidHtmlOptions {
   code: string;
@@ -112,6 +124,10 @@ function generateMermaidHtml(options: MermaidHtmlOptions): string {
  * - scale 参数通过 Puppeteer 的 deviceScaleFactor 实现
  * - scale=2 会生成 2x 分辨率的图片（物理尺寸翻倍，清晰度更高）
  * - 重要：必须在 Mermaid 渲染之前设置 deviceScaleFactor
+ * 
+ * 尺寸限制：
+ * - 最大输出尺寸由 MAX_WIDTH/MAX_HEIGHT 环境变量控制（默认 10000x10000）
+ * - 如果 scale 导致输出超过最大尺寸，会自动降低 scale
  */
 export async function generateMermaidDiagram(options: GenerateOptions): Promise<GenerateResult> {
   const {
@@ -122,8 +138,8 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
     scale = 1,
   } = options;
 
-  // 限制 scale 范围 1-3
-  const deviceScale = Math.max(1, Math.min(scale, 3));
+  // 限制 scale 范围 1-10
+  const requestedScale = Math.max(MIN_SCALE, Math.min(scale, MAX_SCALE));
 
   const startTime = Date.now();
   let page: Page | null = null;
@@ -132,12 +148,11 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
     // 从池中获取 Page
     page = await browserPool.acquirePage();
     
-    // 关键：在加载页面之前设置 viewport 和 deviceScaleFactor
-    // 这样 Mermaid 渲染时就会使用正确的设备像素比
+    // 第一步：先用 scale=1 渲染，获取基础尺寸
     await page.setViewport({
       width: 1920,
       height: 1080,
-      deviceScaleFactor: deviceScale,
+      deviceScaleFactor: 1,
     });
     
     // 生成 HTML 并加载
@@ -160,6 +175,53 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
       throw new Error('Failed to render Mermaid diagram: SVG element not found');
     }
 
+    // 获取基础尺寸（scale=1 时的尺寸）
+    const baseBoundingBox = await svgElement.boundingBox();
+    if (!baseBoundingBox) {
+      throw new Error('Failed to get SVG bounding box');
+    }
+
+    const baseWidth = Math.ceil(baseBoundingBox.width);
+    const baseHeight = Math.ceil(baseBoundingBox.height);
+
+    // 第二步：计算实际可用的 scale（基于最大尺寸限制）
+    // 输出尺寸 = 基础尺寸 × scale
+    // 如果 baseWidth × scale > MAX_WIDTH，需要降低 scale
+    const maxScaleByWidth = Math.floor(MAX_WIDTH / baseWidth);
+    const maxScaleByHeight = Math.floor(MAX_HEIGHT / baseHeight);
+    const maxAllowedScale = Math.max(1, Math.min(maxScaleByWidth, maxScaleByHeight));
+
+    // 实际使用的 scale = min(请求的 scale, 允许的最大 scale)
+    const actualScale = Math.min(requestedScale, maxAllowedScale);
+
+    // 如果实际 scale 与请求 scale 不同，记录日志
+    if (actualScale !== requestedScale) {
+      console.log(`[MermaidPooled] Scale adjusted: requested=${requestedScale}, actual=${actualScale} (base size: ${baseWidth}x${baseHeight}, max: ${MAX_WIDTH}x${MAX_HEIGHT})`);
+    }
+
+    // 第三步：如果需要 scale > 1，重新设置 viewport 并重新渲染
+    if (actualScale > 1) {
+      await page.setViewport({
+        width: 1920,
+        height: 1080,
+        deviceScaleFactor: actualScale,
+      });
+
+      // 重新加载页面以应用新的 deviceScaleFactor
+      await page.goto(dataUrl, {
+        waitUntil: 'networkidle0',
+        timeout: RENDER_TIMEOUT,
+      });
+
+      await page.waitForSelector('.mermaid svg', { timeout: RENDER_TIMEOUT });
+    }
+
+    // 重新获取 SVG 元素（可能因为重新渲染而改变）
+    const finalSvgElement = await page.$('.mermaid svg');
+    if (!finalSvgElement) {
+      throw new Error('Failed to render Mermaid diagram: SVG element not found after scale adjustment');
+    }
+
     let data: Buffer;
     let contentType: string;
 
@@ -179,7 +241,7 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
       contentType = 'image/svg+xml';
     } else if (format === 'pdf') {
       // PDF: 使用 page.pdf() 生成
-      const boundingBox = await svgElement.boundingBox();
+      const boundingBox = await finalSvgElement.boundingBox();
       
       if (!boundingBox) {
         throw new Error('Failed to get SVG bounding box');
@@ -191,7 +253,7 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
       await page.setViewport({
         width: viewportWidth,
         height: viewportHeight,
-        deviceScaleFactor: deviceScale,
+        deviceScaleFactor: actualScale,
       });
 
       // 生成 PDF
@@ -206,7 +268,7 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
     } else {
       // PNG: deviceScaleFactor 已在页面加载前设置
       // 直接对 SVG 元素截图，截图会自动应用 deviceScaleFactor
-      data = await svgElement.screenshot({
+      data = await finalSvgElement.screenshot({
         type: 'png',
         omitBackground: backgroundColor === 'transparent',
       }) as Buffer;
@@ -215,7 +277,7 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[MermaidPooled] Rendered ${format} (scale=${deviceScale}) in ${duration}ms`);
+    console.log(`[MermaidPooled] Rendered ${format} (scale=${actualScale}, base=${baseWidth}x${baseHeight}) in ${duration}ms`);
 
     return { data, contentType };
 

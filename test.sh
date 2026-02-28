@@ -714,6 +714,48 @@ else
 fi
 echo ""
 
+# 测试 25: Scale 越界测试 - scale=10 (应自动调整)
+echo "📋 测试 25: Scale 越界测试 - scale=10 (验证自动调整)"
+START=$(get_time_ms)
+curl -s -X POST "$BASE_URL/api/mermaid/generate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "graph LR\n    A[Scale越界测试] --> B[应自动调整]",
+    "format": "png",
+    "scale": 10
+  }' \
+  -o "$OUTPUT_DIR/compare-10x.png"
+END=$(get_time_ms)
+DURATION=$((END - START))
+
+if [ -s "$OUTPUT_DIR/compare-10x.png" ]; then
+    SIZE=$(wc -c < "$OUTPUT_DIR/compare-10x.png")
+    if command -v identify &> /dev/null; then
+        DIM10=$(identify -format "%wx%h" "$OUTPUT_DIR/compare-10x.png" 2>/dev/null)
+        W10=$(echo "$DIM10" | cut -d'x' -f1)
+        H10=$(echo "$DIM10" | cut -d'x' -f2)
+        # 检查是否超过默认最大尺寸 10000x10000
+        if [ "$W10" -le 10000 ] && [ "$H10" -le 10000 ]; then
+            echo "   ✅ scale=10 图片生成成功: $SIZE bytes, 尺寸: $DIM10 [$(format_duration $DURATION)]"
+            echo "      ✅ 尺寸在限制范围内 (≤10000x10000)"
+            # 与 1x 对比计算实际 scale
+            if [ -s "$OUTPUT_DIR/compare-1x.png" ]; then
+                DIM1=$(identify -format "%wx%h" "$OUTPUT_DIR/compare-1x.png" 2>/dev/null)
+                W1=$(echo "$DIM1" | cut -d'x' -f1)
+                ACTUAL_SCALE=$((W10 / W1))
+                echo "      📊 实际 scale: $ACTUAL_SCALE (请求: 10，可能因尺寸限制自动调整)"
+            fi
+        else
+            echo "   ⚠️  尺寸超过限制: $DIM10 (最大 10000x10000)"
+        fi
+    else
+        echo "   ✅ scale=10 图片生成成功: $SIZE bytes [$(format_duration $DURATION)]"
+    fi
+else
+    echo "   ❌ scale=10 图片生成失败 [$(format_duration $DURATION)]"
+fi
+echo ""
+
 # 计算总耗时
 TOTAL_END=$(date +%s%3N)
 TOTAL_DURATION=$((TOTAL_END - TOTAL_START))

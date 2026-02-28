@@ -56,7 +56,7 @@ interface GenerateRequestBody {
   return?: string;  // Return format: binary, base64, url
   urlType?: string; // URL type for COS: internal, external
   expires?: number | string; // Signed URL expiration in seconds (for return=url)
-  scale?: number | string; // Scale factor for image resolution (1-3)
+  scale?: number | string; // Scale factor for image resolution (1-10, auto-adjusted based on max size)
 }
 
 /**
@@ -73,7 +73,7 @@ interface GenerateRequestBody {
  * - return: Return format (binary, base64, url). Default: binary
  * - urlType: URL type for COS (internal, external). Default: use global config
  * - expires: Signed URL expiration in seconds (for return=url). Default: 0 (permanent URL)
- * - scale: Scale factor for image resolution (1-3). Default: 1. Use 2 for high-DPI images
+ * - scale: Scale factor for image resolution (1-10). Default: 1. Auto-adjusted if output exceeds max size
  */
 router.post('/generate', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -175,12 +175,12 @@ router.post('/generate', async (req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    // Parse scale (1-3)
+    // Parse scale (1-10, actual scale will be auto-adjusted based on image size limits)
     const parsedScale = body.scale ? parseFloat(String(body.scale)) : undefined;
-    if (parsedScale !== undefined && (isNaN(parsedScale) || parsedScale < 1 || parsedScale > 3)) {
+    if (parsedScale !== undefined && (isNaN(parsedScale) || parsedScale < 1 || parsedScale > 10)) {
       res.status(400).json({
         code: 400,
-        message: 'Scale must be a number between 1 and 3',
+        message: 'Scale must be a number between 1 and 10',
         data: null,
       });
       return;

@@ -18,9 +18,9 @@
  * - type: Image type for /img endpoint (png, jpeg, webp). Default: png
  * - theme: Mermaid theme (default, forest, dark, neutral)
  * - bgColor: Background color (hex without #, or !colorname)
- * - width: Image width
- * - height: Image height
- * - scale: Scale factor (1-3, only works with width/height)
+ * - width: Image width (deprecated, has no effect)
+ * - height: Image height (deprecated, has no effect)
+ * - scale: Resolution scale factor (1-10). Default: 1. Auto-adjusted if output exceeds MAX_WIDTH/MAX_HEIGHT
  * - return: Return format (binary, base64, url). Default: binary
  *   - binary: Returns raw image data (default)
  *   - base64: Returns JSON with base64 encoded image
@@ -274,20 +274,17 @@ async function handleRender(
     }
 
     // Parse dimensions
-    let parsedWidth = width ? parseInt(String(width), 10) : undefined;
-    let parsedHeight = height ? parseInt(String(height), 10) : undefined;
+    const parsedWidth = width ? parseInt(String(width), 10) : undefined;
+    const parsedHeight = height ? parseInt(String(height), 10) : undefined;
     const parsedScale = scale ? parseInt(String(scale), 10) : 1;
 
-    // Apply scale
-    if (parsedScale > 1 && parsedScale <= 3) {
-      if (parsedWidth) parsedWidth *= parsedScale;
-      if (parsedHeight) parsedHeight *= parsedScale;
-    }
+    // Validate scale (1-10, actual scale will be auto-adjusted based on image size limits)
+    const validScale = Math.max(1, Math.min(parsedScale, 10));
 
     // Parse background color
     const backgroundColor = parseBackgroundColor(bgColor as string | undefined) || 'white';
 
-    // 生成缓存 key
+    // 生成缓存 key（包含 scale）
     const cacheKey = generateCacheKey({
       code,
       format,
@@ -295,6 +292,7 @@ async function handleRender(
       width: parsedWidth,
       height: parsedHeight,
       backgroundColor,
+      scale: validScale,
     });
 
     // 对于 return=url，先检查 COS 是否已存在（最快路径）
@@ -335,6 +333,7 @@ async function handleRender(
       width: parsedWidth,
       height: parsedHeight,
       backgroundColor,
+      scale: validScale,
     });
 
     if (localCache) {
@@ -352,6 +351,7 @@ async function handleRender(
         width: parsedWidth,
         height: parsedHeight,
         backgroundColor,
+        scale: validScale,
       });
 
       renderData = result.data;
@@ -366,6 +366,7 @@ async function handleRender(
           width: parsedWidth,
           height: parsedHeight,
           backgroundColor,
+          scale: validScale,
         }, renderData).catch((err) => {
           console.error('[Cache] Save error:', err);
         });
