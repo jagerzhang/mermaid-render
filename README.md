@@ -497,12 +497,17 @@ curl "http://localhost:3000/img/Z3JhcGggTFIKICAgIEEtLT5CLS0+Qw?bgColor=!transpar
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `USE_BROWSER_POOL` | `false` | 是否启用浏览器池模式（推荐生产环境启用，性能提升 5-10 倍） |
+| `USE_BROWSER_POOL` | `true` | 是否启用浏览器池模式（推荐生产环境启用，性能提升 5-10 倍） |
 | `RENDER_TIMEOUT` | `30000` | 渲染超时时间（毫秒） |
 | `MAX_WIDTH` | `10000` | 输出图片最大宽度（像素），超过会自动降低 scale |
 | `MAX_HEIGHT` | `10000` | 输出图片最大高度（像素），超过会自动降低 scale |
-| `MERMAID_CDN_URL` | `https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js` | Mermaid.js CDN 地址（仅作为 fallback） |
+| `MERMAID_CDN_URL` | - | Mermaid.js CDN 地址（不设置则使用内嵌本地文件，设置后强制使用 CDN） |
+| `FONT_AWESOME_JS_URL` | - | Font Awesome JS 地址（不设置则使用内嵌本地文件，设置后强制使用 CDN） |
 | `PUPPETEER_EXECUTABLE_PATH` | `/usr/bin/chromium-browser` | Chromium 可执行文件路径 |
+
+> **资源加载策略**：默认使用内嵌的本地文件（无网络请求，性能最佳）。如需使用 CDN 版本（如需要更新版本），可设置对应的 URL 环境变量。
+> 
+> **Font Awesome 说明**：使用 JS 版本（SVG+JS）而非 CSS 版本，因为 JS 版本会将图标渲染为内联 SVG，不需要加载额外的字体文件。
 
 ### 浏览器池配置
 
@@ -751,63 +756,6 @@ USE_BROWSER_POOL=true
 - **实验性功能**：Browser Pool 模式目前为实验性功能，在高并发场景下可能存在稳定性问题
 - **内存占用**：常驻浏览器会占用约 200-300MB 内存
 - **推荐场景**：低并发、对延迟敏感的场景（如交互式生成）
-
----
-
-## CI/CD
-
-### GitHub Actions 自动发布
-
-项目配置了 GitHub Actions，当推送版本标签时自动构建并发布 Docker 镜像到 DockerHub。
-
-#### 触发方式
-
-1. **打标签触发**（推荐）：
-   ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
-
-2. **手动触发**：在 GitHub 仓库的 Actions 页面点击 "Run workflow"
-
-#### 配置 Secrets
-
-在 GitHub 仓库的 Settings → Secrets and variables → Actions 中配置以下 Secrets：
-
-| Secret 名称 | 说明 |
-|-------------|------|
-| `DOCKERHUB_USERNAME` | DockerHub 用户名 |
-| `DOCKERHUB_PASSWORD` | DockerHub 密码或 Access Token |
-
-> **推荐**：使用 DockerHub [Access Token](https://hub.docker.com/settings/security) 而不是密码，更安全。
-
-#### 构建产物
-
-自动构建会生成以下 Docker 镜像标签：
-
-| 标签格式 | 示例 | 说明 |
-|----------|------|------|
-| `v*.*.*` | `v1.0.0` | 完整版本号 |
-| `latest` | `latest` | 最新版本 |
-
-支持的平台架构：
-- `linux/amd64` (x86_64)
-- `linux/arm64` (Apple Silicon, ARM 服务器)
-
-#### 使用发布的镜像
-
-```bash
-# 拉取最新版本
-docker pull <your-dockerhub-username>/mermaid-render:latest
-
-# 拉取指定版本
-docker pull <your-dockerhub-username>/mermaid-render:v1.0.0
-
-# 运行
-docker run -d -p 3000:3000 \
-  -e USE_BROWSER_POOL=true \
-  <your-dockerhub-username>/mermaid-render:latest
-```
 
 ---
 

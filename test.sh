@@ -143,6 +143,69 @@ else
 fi
 echo ""
 
+# 测试 5.1: Font Awesome 图标支持 (SVG)
+echo "📋 测试 5.1: Font Awesome 图标支持 (SVG)"
+START=$(get_time_ms)
+curl -s -X POST "$BASE_URL/api/mermaid/generate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "flowchart TD\n    A[fa:fa-user 用户] --> B[fa:fa-server 服务器]\n    B --> C[fa:fa-database 数据库]\n    C --> D[fa:fa-cloud 云存储]\n    D --> E[fa:fa-check-circle 完成]",
+    "format": "svg",
+    "theme": "default"
+  }' \
+  -o "$OUTPUT_DIR/fontawesome.svg"
+END=$(get_time_ms)
+DURATION=$((END - START))
+
+if [ -s "$OUTPUT_DIR/fontawesome.svg" ]; then
+    FIRST_CHAR=$(head -c 1 "$OUTPUT_DIR/fontawesome.svg")
+    if [[ "$FIRST_CHAR" == "<" ]]; then
+        # 检查 SVG 中是否包含 Font Awesome 相关内容
+        if grep -q "fa-" "$OUTPUT_DIR/fontawesome.svg" 2>/dev/null; then
+            SIZE=$(wc -c < "$OUTPUT_DIR/fontawesome.svg")
+            echo "   ✅ Font Awesome 图标渲染成功: $SIZE bytes [$(format_duration $DURATION)]"
+        else
+            SIZE=$(wc -c < "$OUTPUT_DIR/fontawesome.svg")
+            echo "   ⚠️  SVG 生成成功但未检测到图标标记: $SIZE bytes [$(format_duration $DURATION)]"
+        fi
+    else
+        echo "   ❌ Font Awesome 图标渲染失败 (渲染错误) [$(format_duration $DURATION)]"
+        cat "$OUTPUT_DIR/fontawesome.svg" | head -c 200
+    fi
+else
+    echo "   ❌ Font Awesome 图标渲染失败 (空响应) [$(format_duration $DURATION)]"
+fi
+echo ""
+
+# 测试 5.2: Font Awesome 图标支持 (PNG)
+echo "📋 测试 5.2: Font Awesome 图标支持 (PNG)"
+START=$(get_time_ms)
+curl -s -X POST "$BASE_URL/api/mermaid/generate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "flowchart LR\n    A[fa:fa-laptop 客户端] -->|fa:fa-paper-plane 请求| B[fa:fa-server API]\n    B -->|fa:fa-cogs 处理| C[fa:fa-database DB]\n    C -->|fa:fa-reply 响应| B\n    B -->|fa:fa-paper-plane 返回| A",
+    "format": "png",
+    "scale": 2
+  }' \
+  -o "$OUTPUT_DIR/fontawesome.png"
+END=$(get_time_ms)
+DURATION=$((END - START))
+
+if [ -s "$OUTPUT_DIR/fontawesome.png" ]; then
+    # 检查是否为有效的 PNG 文件
+    FILE_TYPE=$(file -b "$OUTPUT_DIR/fontawesome.png" 2>/dev/null | head -c 3)
+    if [[ "$FILE_TYPE" == "PNG" ]]; then
+        SIZE=$(wc -c < "$OUTPUT_DIR/fontawesome.png")
+        echo "   ✅ Font Awesome PNG 生成成功: $SIZE bytes [$(format_duration $DURATION)]"
+    else
+        echo "   ❌ Font Awesome PNG 生成失败 (非PNG格式) [$(format_duration $DURATION)]"
+        cat "$OUTPUT_DIR/fontawesome.png" | head -c 200
+    fi
+else
+    echo "   ❌ Font Awesome PNG 生成失败 (空响应) [$(format_duration $DURATION)]"
+fi
+echo ""
+
 # 测试 6: return=url - 上传到 COS (SVG)
 echo "📋 测试 6: return=url - 上传到 COS (SVG)"
 START=$(get_time_ms)

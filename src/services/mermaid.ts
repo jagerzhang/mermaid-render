@@ -34,25 +34,31 @@ export const VALID_THEMES: MermaidTheme[] = ['default', 'forest', 'dark', 'neutr
 // Timeout for rendering (30 seconds)
 const RENDER_TIMEOUT = parseInt(process.env.RENDER_TIMEOUT ?? '30000', 10);
 
-// 是否使用 Browser Pool 模式（默认关闭，可通过环境变量启用）
-const USE_BROWSER_POOL = process.env.USE_BROWSER_POOL === 'true';
+// 是否使用 Browser Pool 模式（默认启用，可通过环境变量关闭）
+// Browser Pool 模式包含更多优化和修复（FontAwesome 图标、边距优化等）
+const USE_BROWSER_POOL = process.env.USE_BROWSER_POOL !== 'false';
 
 /**
  * Generate a Mermaid diagram
  * 
  * 支持两种模式：
- * 1. CLI 模式（默认）：每次调用 mmdc CLI，启动新的 Chromium 进程
- * 2. Browser Pool 模式：复用常驻的 Chromium 实例，性能更好
+ * 1. Browser Pool 模式（默认）：复用常驻的 Chromium 实例，性能更好
+ *    - 包含 FontAwesome 图标支持
+ *    - 包含边距优化（更紧凑的输出）
+ *    - 包含 SVG 尺寸修正
+ * 2. CLI 模式：每次调用 mmdc CLI，启动新的 Chromium 进程
+ *    - 功能较基础，无自定义优化
  * 
- * 通过环境变量 USE_BROWSER_POOL=true 启用 Browser Pool 模式
+ * 通过环境变量 USE_BROWSER_POOL=false 切换到 CLI 模式
  */
 export async function generateMermaidDiagram(options: GenerateOptions): Promise<GenerateResult> {
-  // 如果启用了 Browser Pool 模式，使用优化版本
+  // 如果启用了 Browser Pool 模式（默认），使用优化版本
   if (USE_BROWSER_POOL) {
-    console.log('[Mermaid] Using Browser Pool mode');
+    console.log('[Mermaid] Using Browser Pool mode (optimized)');
     return mermaidPooled.generateMermaidDiagram(options);
   }
   
+  console.log('[Mermaid] Using CLI mode (basic)');
   return generateMermaidDiagramCLI(options);
 }
 

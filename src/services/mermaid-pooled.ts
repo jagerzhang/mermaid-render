@@ -50,20 +50,38 @@ export const VALID_THEMES: MermaidTheme[] = ['default', 'forest', 'dark', 'neutr
 // Timeout for rendering (30 seconds)
 const RENDER_TIMEOUT = parseInt(process.env.RENDER_TIMEOUT ?? '30000', 10);
 
-// 加载本地 mermaid.js（避免每次从 CDN 加载，提高速度和稳定性）
+// Mermaid.js 加载策略：指定了 CDN URL 则用 CDN，否则用本地文件
+const MERMAID_CDN_URL = process.env.MERMAID_CDN_URL;
 const MERMAID_JS_PATH = path.join(__dirname, '..', 'assets', 'mermaid.min.js');
-let MERMAID_JS_CONTENT: string;
+let MERMAID_JS_CONTENT = '';
 
-try {
-  MERMAID_JS_CONTENT = fs.readFileSync(MERMAID_JS_PATH, 'utf-8');
-  console.log(`[MermaidPooled] Loaded mermaid.js from ${MERMAID_JS_PATH} (${(MERMAID_JS_CONTENT.length / 1024).toFixed(1)} KB)`);
-} catch (err) {
-  console.error(`[MermaidPooled] Failed to load mermaid.js from ${MERMAID_JS_PATH}, falling back to CDN`);
-  MERMAID_JS_CONTENT = '';
+if (MERMAID_CDN_URL) {
+  console.log(`[MermaidPooled] Using CDN for mermaid.js: ${MERMAID_CDN_URL}`);
+} else {
+  try {
+    MERMAID_JS_CONTENT = fs.readFileSync(MERMAID_JS_PATH, 'utf-8');
+    console.log(`[MermaidPooled] Loaded mermaid.js from ${MERMAID_JS_PATH} (${(MERMAID_JS_CONTENT.length / 1024).toFixed(1)} KB)`);
+  } catch (err) {
+    console.error(`[MermaidPooled] Failed to load mermaid.js from ${MERMAID_JS_PATH}, please set MERMAID_CDN_URL or ensure the file exists`);
+  }
 }
 
-// CDN URL 作为 fallback
-const MERMAID_CDN_URL = process.env.MERMAID_CDN_URL ?? 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
+// Font Awesome JS 加载策略：指定了 CDN URL 则用 CDN，否则用本地文件
+// 注意：使用 JS 版本（SVG+JS）而不是 CSS 版本，因为 CSS 版本需要加载字体文件
+const FONT_AWESOME_JS_URL = process.env.FONT_AWESOME_JS_URL;
+const FONT_AWESOME_JS_PATH = path.join(__dirname, '..', 'assets', 'fontawesome.min.js');
+let FONT_AWESOME_JS_CONTENT = '';
+
+if (FONT_AWESOME_JS_URL) {
+  console.log(`[MermaidPooled] Using CDN for fontawesome.js: ${FONT_AWESOME_JS_URL}`);
+} else {
+  try {
+    FONT_AWESOME_JS_CONTENT = fs.readFileSync(FONT_AWESOME_JS_PATH, 'utf-8');
+    console.log(`[MermaidPooled] Loaded fontawesome.js from ${FONT_AWESOME_JS_PATH} (${(FONT_AWESOME_JS_CONTENT.length / 1024).toFixed(1)} KB)`);
+  } catch (err) {
+    console.error(`[MermaidPooled] Failed to load fontawesome.js from ${FONT_AWESOME_JS_PATH}, please set FONT_AWESOME_JS_URL or ensure the file exists`);
+  }
+}
 
 // 最大图片尺寸限制（参考 mermaid.ink 默认 10000x10000）
 const MAX_WIDTH = parseInt(process.env.MAX_WIDTH ?? '10000', 10);
@@ -81,7 +99,7 @@ interface MermaidHtmlOptions {
 
 /**
  * 生成 Mermaid 图表的 HTML 页面
- * 优先使用内嵌的 mermaid.js，避免网络请求
+ * 加载策略：指定了 CDN URL 则用 CDN，否则用本地内嵌文件
  */
 function generateMermaidHtml(options: MermaidHtmlOptions): string {
   const { code, theme, backgroundColor } = options;
@@ -94,20 +112,27 @@ function generateMermaidHtml(options: MermaidHtmlOptions): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-  // 根据是否有本地 mermaid.js 决定加载方式
-  const mermaidScript = MERMAID_JS_CONTENT
-    ? `<script>${MERMAID_JS_CONTENT}</script>`
-    : `<script src="${MERMAID_CDN_URL}"></script>`;
+  // Mermaid.js 加载：指定了 CDN 用 CDN，否则用本地内嵌
+  const mermaidScript = MERMAID_CDN_URL
+    ? `<script src="${MERMAID_CDN_URL}"></script>`
+    : `<script>${MERMAID_JS_CONTENT}</script>`;
+
+  // Font Awesome JS 加载：指定了 CDN 用 CDN，否则用本地内嵌
+  // 使用 JS 版本可以将图标渲染为内联 SVG，不依赖字体文件
+  const fontAwesomeScript = FONT_AWESOME_JS_URL
+    ? `<script src="${FONT_AWESOME_JS_URL}"></script>`
+    : `<script>${FONT_AWESOME_JS_CONTENT}</script>`;
 
   return `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
+  ${fontAwesomeScript}
   <style>
     body {
       margin: 0;
-      padding: 20px;
+      padding: 8px;
       background-color: ${backgroundColor};
       display: flex;
       justify-content: center;
@@ -117,7 +142,52 @@ function generateMermaidHtml(options: MermaidHtmlOptions): string {
       max-width: 100%;
     }
     .mermaid {
-      font-family: 'trebuchet ms', verdana, arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+    /* 确保 foreignObject 内容不被截断 */
+    .mermaid foreignObject {
+      overflow: visible !important;
+    }
+    .mermaid foreignObject > div {
+      overflow: visible !important;
+      white-space: nowrap !important;
+    }
+    /* Font Awesome 图标样式修复 */
+    .mermaid .svg-inline--fa {
+      display: inline-block;
+      vertical-align: -0.125em;
+      overflow: visible;
+      /* 确保图标没有背景 */
+      background: transparent !important;
+    }
+    .mermaid .svg-inline--fa path {
+      /* 继承父元素颜色 */
+      fill: currentColor;
+    }
+    /* 确保 nodeLabel 中的图标正确对齐 */
+    .mermaid .nodeLabel {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+    }
+    /* 边缘标签样式修复 - 使用与页面一致的背景色 */
+    .mermaid .edgeLabel {
+      background-color: ${backgroundColor} !important;
+    }
+    .mermaid .edgeLabel rect {
+      fill: ${backgroundColor} !important;
+      background-color: ${backgroundColor} !important;
+    }
+    .mermaid .edgeLabel .svg-inline--fa {
+      margin: 0 2px;
+      background: transparent !important;
+    }
+    /* edgeLabel span 透明背景 */
+    .mermaid .edgeLabel span {
+      background-color: transparent !important;
+    }
+    .mermaid .labelBkg {
+      background-color: ${backgroundColor} !important;
     }
   </style>
 </head>
@@ -131,7 +201,11 @@ function generateMermaidHtml(options: MermaidHtmlOptions): string {
       startOnLoad: true,
       theme: '${theme}',
       securityLevel: 'loose',
-      fontFamily: 'trebuchet ms, verdana, arial, sans-serif'
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif',
+      flowchart: {
+        htmlLabels: true,
+        useMaxWidth: false
+      }
     });
   </script>
 </body>
@@ -195,13 +269,166 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
     // 等待 Mermaid 渲染完成
     await page.waitForSelector('.mermaid svg', { timeout: RENDER_TIMEOUT });
 
+    // 等待 Font Awesome 图标转换完成（FA JS 会将 <i> 标签转换为 <svg>）
+    // FA JS 使用 MutationObserver，需要一点时间处理
+    await page.waitForFunction(
+      (): boolean => {
+        // 检查是否有未转换的 fa 图标（i 标签还存在）
+        const unconvertedIcons = document.querySelectorAll('.mermaid svg i[class*="fa-"]');
+        // 如果没有 fa 相关的 i 标签，或者已经有转换后的 svg-inline--fa，认为转换完成
+        return unconvertedIcons.length === 0;
+      },
+      { timeout: 5000 }
+    ).catch(() => {
+      // 超时不是错误，可能没有 FA 图标
+    });
+    
+    // 额外等待 100ms 确保渲染稳定
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // 定义 SVG 尺寸修正函数（需要在浏览器上下文中执行）
+    const fixSvgSizeScript = `
+      (() => {
+        const svg = document.querySelector('.mermaid svg');
+        if (!svg) return;
+        
+        // 首先，移除所有可能导致内容截断的 CSS 限制，并修复 FA 图标样式
+        let fixStyle = document.getElementById('svg-fix-style');
+        if (!fixStyle) {
+          fixStyle = document.createElement('style');
+          fixStyle.id = 'svg-fix-style';
+          fixStyle.textContent = \`
+            .mermaid foreignObject { overflow: visible !important; }
+            .mermaid foreignObject > div { overflow: visible !important; white-space: nowrap !important; }
+            .mermaid .nodeLabel { display: inline-flex !important; align-items: center !important; gap: 4px !important; }
+            /* Font Awesome 图标样式修复 */
+            .mermaid .svg-inline--fa { 
+              display: inline-block !important; 
+              vertical-align: -0.125em !important;
+              overflow: visible !important;
+              background: transparent !important;
+            }
+            .mermaid .svg-inline--fa path { fill: currentColor !important; }
+            .mermaid .edgeLabel .svg-inline--fa { margin: 0 2px !important; }
+          \`;
+          document.head.appendChild(fixStyle);
+        }
+        
+        // 修复 Font Awesome 图标：移除可能导致背景问题的样式
+        const faIcons = svg.querySelectorAll('.svg-inline--fa');
+        faIcons.forEach((icon) => {
+          // 确保图标透明背景
+          icon.style.background = 'transparent';
+          icon.style.backgroundColor = 'transparent';
+          // 确保图标有正确的尺寸
+          if (!icon.hasAttribute('width')) {
+            icon.setAttribute('width', '1em');
+          }
+          if (!icon.hasAttribute('height')) {
+            icon.setAttribute('height', '1em');
+          }
+          // 修复 path 的填充色
+          const paths = icon.querySelectorAll('path');
+          paths.forEach((path) => {
+            // 如果 path 有内联 fill 样式，检查是否正确
+            const fill = path.style.fill || path.getAttribute('fill');
+            if (!fill || fill === 'currentColor') {
+              // 使用父元素的颜色
+              path.style.fill = '#333';
+            }
+          });
+        });
+        
+        // 强制布局重排
+        svg.getBoundingClientRect();
+        
+        // 遍历所有节点组，检查内容是否溢出
+        const nodeGroups = svg.querySelectorAll('g.node');
+        let maxWidthIncrease = 0;
+        let maxLeftExpand = 0;  // 记录向左扩展的最大距离
+        
+        nodeGroups.forEach((nodeGroup) => {
+          const foreignObject = nodeGroup.querySelector('foreignObject');
+          const labelContainer = nodeGroup.querySelector('rect.label-container');
+          
+          if (foreignObject && labelContainer) {
+            const innerSpan = foreignObject.querySelector('span.nodeLabel');
+            
+            if (innerSpan) {
+              // 使用 getBoundingClientRect 获取 span 渲染后的实际宽度
+              const spanRect = innerSpan.getBoundingClientRect();
+              const actualWidth = spanRect.width;
+              
+              const currentFOWidth = parseFloat(foreignObject.getAttribute('width') || '0');
+              
+              // 增加额外 padding
+              const extraPadding = 24;
+              const requiredWidth = actualWidth + extraPadding;
+              
+              if (requiredWidth > currentFOWidth) {
+                const widthDiff = requiredWidth - currentFOWidth;
+                maxWidthIncrease = Math.max(maxWidthIncrease, widthDiff);
+                
+                // 向左扩展的距离是宽度增量的一半
+                maxLeftExpand = Math.max(maxLeftExpand, widthDiff / 2);
+                
+                // 更新 foreignObject 宽度
+                foreignObject.setAttribute('width', String(requiredWidth));
+                
+                // 更新节点矩形框的宽度
+                const currentRectWidth = parseFloat(labelContainer.getAttribute('width') || '0');
+                const newRectWidth = currentRectWidth + widthDiff;
+                labelContainer.setAttribute('width', String(newRectWidth));
+                
+                // 调整矩形框的 x 位置（保持居中）
+                const currentRectX = parseFloat(labelContainer.getAttribute('x') || '0');
+                labelContainer.setAttribute('x', String(currentRectX - widthDiff / 2));
+                
+                // 调整 label group 的位置
+                const labelGroup = nodeGroup.querySelector('g.label');
+                if (labelGroup) {
+                  const transform = labelGroup.getAttribute('transform') || '';
+                  const translateMatch = transform.match(/translate\\(([\\d.-]+),\\s*([\\d.-]+)\\)/);
+                  if (translateMatch) {
+                    const x = parseFloat(translateMatch[1]) - widthDiff / 2;
+                    const y = parseFloat(translateMatch[2]);
+                    labelGroup.setAttribute('transform', 'translate(' + x + ', ' + y + ')');
+                  }
+                }
+              }
+            }
+          }
+        });
+        
+        // 更新 SVG 的 viewBox - 需要同时向左和向右扩展
+        if (maxWidthIncrease > 0) {
+          const currentViewBox = svg.getAttribute('viewBox')?.split(' ').map(Number) || [0, 0, 0, 0];
+          const [vbX, vbY, vbWidth, vbHeight] = currentViewBox;
+          
+          const padding = 24;
+          // 向左扩展：viewBox 的 x 要减小
+          const newVbX = vbX - maxLeftExpand - padding / 2;
+          // 总宽度增加：左边扩展 + 右边扩展 + padding
+          const newWidth = vbWidth + maxWidthIncrease + padding;
+          
+          svg.setAttribute('viewBox', newVbX + ' ' + vbY + ' ' + newWidth + ' ' + vbHeight);
+          svg.setAttribute('width', String(newWidth));
+          svg.setAttribute('height', String(vbHeight));
+          svg.removeAttribute('style');
+        }
+      })();
+    `;
+    
+    // 首次修正 SVG 尺寸（在获取基础尺寸之前）
+    await page.evaluate(fixSvgSizeScript);
+
     // 获取 SVG 元素边界
     const svgElement = await page.$('.mermaid svg');
     if (!svgElement) {
       throw new Error('Failed to render Mermaid diagram: SVG element not found');
     }
 
-    // 获取基础尺寸（scale=1 时的尺寸）
+    // 获取基础尺寸（修正后的尺寸）
     const baseBoundingBox = await svgElement.boundingBox();
     if (!baseBoundingBox) {
       throw new Error('Failed to get SVG bounding box');
@@ -240,61 +467,231 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
       });
 
       await page.waitForSelector('.mermaid svg', { timeout: RENDER_TIMEOUT });
+      
+      // 等待 Font Awesome 再次转换完成
+      await page.waitForFunction(
+        (): boolean => {
+          const unconvertedIcons = document.querySelectorAll('.mermaid svg i[class*="fa-"]');
+          return unconvertedIcons.length === 0;
+        },
+        { timeout: 5000 }
+      ).catch(() => {});
+      
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // 重新应用尺寸修正
+      await page.evaluate(fixSvgSizeScript);
     }
 
-    // 重新获取 SVG 元素（可能因为重新渲染而改变）
+    // 重新获取 SVG 元素（尺寸可能已修改）
     const finalSvgElement = await page.$('.mermaid svg');
     if (!finalSvgElement) {
-      throw new Error('Failed to render Mermaid diagram: SVG element not found after scale adjustment');
+      throw new Error('Failed to render Mermaid diagram: SVG element not found after size adjustment');
     }
 
     let data: Buffer;
     let contentType: string;
 
     if (format === 'svg') {
-      // 获取 SVG 内容
-      const svgContent = await page.evaluate((): string | null => {
-        const svg = document.querySelector('.mermaid svg');
-        if (!svg) return null;
-        return svg.outerHTML;
+      // SVG 提取并修复问题
+      const debugInfo = await page.evaluate((): { found: boolean; viewBox: string | null; widthBefore: string | null; widthAfter: string | null; bbox: { x: number; y: number; width: number; height: number } | null; html: string } => {
+        let svg = document.querySelector('.mermaid svg') as SVGSVGElement | null;
+        if (!svg) {
+          svg = document.querySelector('#container svg') as SVGSVGElement | null;
+        }
+        if (!svg) {
+          svg = document.querySelector('svg') as SVGSVGElement | null;
+        }
+        if (!svg) {
+          return { found: false, viewBox: null, widthBefore: null, widthAfter: null, bbox: null, html: '' };
+        }
+        
+        const viewBox = svg.getAttribute('viewBox');
+        const widthBefore = svg.getAttribute('width');
+        
+        // 克隆并修改
+        const clonedSvg = svg.cloneNode(true) as SVGSVGElement;
+        
+        // 修复 Font Awesome 图标
+        const faIcons = clonedSvg.querySelectorAll('svg.svg-inline--fa');
+        faIcons.forEach((icon) => {
+          if (!icon.hasAttribute('width')) {
+            icon.setAttribute('width', '1em');
+          }
+          if (!icon.hasAttribute('height')) {
+            icon.setAttribute('height', '1em');
+          }
+          (icon as SVGElement).style.verticalAlign = '-0.125em';
+          const paths = icon.querySelectorAll('path');
+          paths.forEach((path) => {
+            (path as SVGPathElement).style.fill = '#333';
+          });
+        });
+        
+        // 获取 SVG 内容的实际边界框（BBox）
+        // 这是所有图形元素的边界，不受 viewBox 影响
+        let contentBBox: { x: number; y: number; width: number; height: number } | null = null;
+        try {
+          const bbox = svg.getBBox();
+          contentBBox = { x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height };
+        } catch {
+          contentBBox = null;
+        }
+        
+        // 使用统一的边距使内容居中
+        const padding = 8;  // 固定边距
+        
+        if (contentBBox) {
+          // 基于实际内容边界计算新的 viewBox
+          // 新 viewBox 从 (内容左边界 - padding) 开始
+          const newX = contentBBox.x - padding;
+          const newY = contentBBox.y - padding;
+          const newWidth = contentBBox.width + padding * 2;
+          const newHeight = contentBBox.height + padding * 2;
+          
+          clonedSvg.setAttribute('viewBox', `${newX} ${newY} ${newWidth} ${newHeight}`);
+          clonedSvg.setAttribute('width', String(newWidth));
+          clonedSvg.setAttribute('height', String(newHeight));
+          clonedSvg.removeAttribute('style');
+        } else if (viewBox) {
+          // 降级处理：使用原始 viewBox
+          const parts = viewBox.split(/\s+/).map(Number);
+          if (parts.length === 4 && !isNaN(parts[2]) && !isNaN(parts[3])) {
+            clonedSvg.setAttribute('width', String(parts[2]));
+            clonedSvg.setAttribute('height', String(parts[3]));
+            clonedSvg.removeAttribute('style');
+          }
+        }
+        
+        const widthAfter = clonedSvg.getAttribute('width');
+        
+        return {
+          found: true,
+          viewBox,
+          widthBefore,
+          widthAfter,
+          bbox: contentBBox,
+          html: clonedSvg.outerHTML
+        };
       });
       
-      if (!svgContent) {
+      console.log('[DEBUG SVG] found:', debugInfo.found);
+      console.log('[DEBUG SVG] viewBox:', debugInfo.viewBox);
+      console.log('[DEBUG SVG] bbox:', JSON.stringify(debugInfo.bbox));
+      console.log('[DEBUG SVG] widthBefore:', debugInfo.widthBefore);
+      console.log('[DEBUG SVG] widthAfter:', debugInfo.widthAfter);
+      console.log('[DEBUG SVG] html starts with:', debugInfo.html.substring(0, 250));
+      
+      if (!debugInfo.found || !debugInfo.html) {
         throw new Error('Failed to extract SVG content');
       }
       
-      data = Buffer.from(svgContent, 'utf-8');
+      data = Buffer.from(debugInfo.html, 'utf-8');
       contentType = 'image/svg+xml';
     } else if (format === 'pdf') {
       // PDF: 使用 page.pdf() 生成
+      // 需要先获取 SVG 的 boundingBox，然后截取对应区域
       const boundingBox = await finalSvgElement.boundingBox();
       
       if (!boundingBox) {
         throw new Error('Failed to get SVG bounding box');
       }
 
-      const viewportWidth = Math.ceil(boundingBox.width) + 40;
-      const viewportHeight = Math.ceil(boundingBox.height) + 40;
+      // PDF 使用固定的对称边距
+      const pdfPadding = 20;
+      const contentWidth = Math.ceil(boundingBox.width);
+      const contentHeight = Math.ceil(boundingBox.height);
+      const pdfWidth = contentWidth + pdfPadding * 2;
+      const pdfHeight = contentHeight + pdfPadding * 2;
       
+      // 设置 viewport 为 PDF 尺寸
       await page.setViewport({
-        width: viewportWidth,
-        height: viewportHeight,
+        width: pdfWidth,
+        height: pdfHeight,
         deviceScaleFactor: actualScale,
       });
+      
+      // 调整页面样式使 SVG 居中且边距对称
+      await page.evaluate((params: { padding: number; contentWidth: number; contentHeight: number }): void => {
+        const { padding, contentWidth, contentHeight } = params;
+        
+        // 重置 body 样式
+        const body = document.body;
+        body.style.cssText = `
+          margin: 0;
+          padding: ${padding}px;
+          width: ${contentWidth + padding * 2}px;
+          height: ${contentHeight + padding * 2}px;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          box-sizing: border-box;
+          overflow: hidden;
+        `;
+        
+        // 调整容器样式
+        const container = document.getElementById('container');
+        if (container) {
+          container.style.cssText = `
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0;
+            padding: 0;
+          `;
+        }
+        
+        // 确保 SVG 不被拉伸
+        const svg = document.querySelector('.mermaid svg') as SVGSVGElement | null;
+        if (svg) {
+          svg.style.maxWidth = '100%';
+          svg.style.maxHeight = '100%';
+        }
+      }, { padding: pdfPadding, contentWidth, contentHeight });
 
       // 生成 PDF
       data = await page.pdf({
-        width: viewportWidth,
-        height: viewportHeight,
+        width: pdfWidth,
+        height: pdfHeight,
         printBackground: true,
         pageRanges: '1',
+        margin: { top: 0, right: 0, bottom: 0, left: 0 },
       }) as Buffer;
       
       contentType = 'application/pdf';
     } else {
-      // PNG: deviceScaleFactor 已在页面加载前设置
+      // PNG: 先优化 SVG viewBox 使边距更紧凑，然后截图
+      // 获取内容的实际边界并调整 viewBox
+      await page.evaluate((): void => {
+        const svg = document.querySelector('.mermaid svg') as SVGSVGElement | null;
+        if (!svg) return;
+        
+        try {
+          const bbox = svg.getBBox();
+          const padding = 8;  // 紧凑的边距
+          
+          // 基于实际内容边界计算新的 viewBox
+          const newX = bbox.x - padding;
+          const newY = bbox.y - padding;
+          const newWidth = bbox.width + padding * 2;
+          const newHeight = bbox.height + padding * 2;
+          
+          svg.setAttribute('viewBox', `${newX} ${newY} ${newWidth} ${newHeight}`);
+          svg.setAttribute('width', String(newWidth));
+          svg.setAttribute('height', String(newHeight));
+          svg.removeAttribute('style');
+        } catch {
+          // 忽略 getBBox 错误
+        }
+      });
+      
+      // 重新获取优化后的 SVG 元素
+      const optimizedSvgElement = await page.$('.mermaid svg');
+      const targetElement = optimizedSvgElement || finalSvgElement;
+      
+      // deviceScaleFactor 已在页面加载前设置
       // 直接对 SVG 元素截图，截图会自动应用 deviceScaleFactor
-      data = await finalSvgElement.screenshot({
+      data = await targetElement.screenshot({
         type: 'png',
         omitBackground: backgroundColor === 'transparent',
       }) as Buffer;
