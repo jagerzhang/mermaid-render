@@ -56,7 +56,7 @@ interface GenerateRequestBody {
   return?: string;  // Return format: binary, base64, url
   urlType?: string; // URL type for COS: internal, external
   expires?: number | string; // Signed URL expiration in seconds (for return=url)
-  scale?: number | string; // Scale factor for image resolution (1-10, auto-adjusted based on max size)
+  scale?: number | string; // Scale factor for image resolution (1-3)
 }
 
 /**
@@ -73,7 +73,7 @@ interface GenerateRequestBody {
  * - return: Return format (binary, base64, url). Default: binary
  * - urlType: URL type for COS (internal, external). Default: use global config
  * - expires: Signed URL expiration in seconds (for return=url). Default: 0 (permanent URL)
- * - scale: Scale factor for image resolution (1-10). Default: 1. Auto-adjusted if output exceeds max size
+ * - scale: Scale factor for image resolution (1-3). Default: 1. Use 2 for high-DPI images
  */
 router.post('/generate', async (req: Request, res: Response, next: NextFunction) => {
   try {

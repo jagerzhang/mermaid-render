@@ -4,7 +4,7 @@
   "description": "HTTP API service for rendering Mermaid diagrams to SVG/PNG",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r src/assets dist/",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts"
   },

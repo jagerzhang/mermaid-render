@@ -121,7 +121,7 @@ Content-Type: application/json
 | `format` | string | ❌ | `svg` | 输出格式: `svg`, `png`, `pdf` |
 | `theme` | string | ❌ | `default` | 主题: `default`, `forest`, `dark`, `neutral` |
 | `backgroundColor` | string | ❌ | `white` | 背景颜色 |
-| `scale` | number | ❌ | `1` | 清晰度倍数 (1-3)，推荐 `2` 获得高清图片 |
+| `scale` | number | ❌ | `1` | 清晰度倍数 (1-10)，推荐 `2` 获得高清图片 |
 | `return` | string | ❌ | `binary` | 返回格式: `binary`, `base64`, `url` |
 | `urlType` | string | ❌ | 全局配置 | URL 类型: `internal`(内网), `external`(外网) |
 | `expires` | number | ❌ | `0` | 签名URL有效期（秒），0表示永久URL |
@@ -130,6 +130,9 @@ Content-Type: application/json
 > - `scale=1`：标准清晰度（默认）
 > - `scale=2`：2倍清晰度，输出图片物理尺寸翻倍（推荐，适合高 DPI 屏幕）
 > - `scale=3`：3倍清晰度，输出图片物理尺寸为原来的 3 倍
+> - `scale=4-10`：更高清晰度（用于打印等场景）
+> 
+> **尺寸限制**：如果 scale 导致输出超过 MAX_WIDTH/MAX_HEIGHT（默认 10000×10000），会自动降低 scale
 > 
 > 示例：图表原始尺寸 400×300，设置 `scale=2` 后输出图片为 **800×600** 像素
 
@@ -334,11 +337,15 @@ curl -X POST http://localhost:3000/api/mermaid/generate \
 | `1` (默认) | 标准清晰度 | 普通网页展示 |
 | `2` (推荐) | 2x 高清，尺寸翻倍 | 高 DPI 屏幕、需要清晰图片 |
 | `3` | 3x 超清，尺寸 3 倍 | 打印、高精度需求 |
+| `4-10` | 更高清晰度 | 超大图打印、特殊需求 |
+
+> **注意**：如果输出尺寸超过 MAX_WIDTH/MAX_HEIGHT（默认 10000×10000），scale 会自动降低
 
 **示例**：图表原始尺寸 400×300
 - `scale=1` → 输出 400×300 像素
 - `scale=2` → 输出 **800×600** 像素（2x 高清）
 - `scale=3` → 输出 **1200×900** 像素（3x 超清）
+- `scale=10` → 输出 **4000×3000** 像素（如未超限）
 
 ---
 
@@ -377,7 +384,7 @@ GET /pdf/{base64_encoded_code}?theme=default&return=binary
 | `type` | string | `png` | 图片类型 (仅 /img 有效) |
 | `theme` | string | `default` | 主题 |
 | `bgColor` | string | - | 背景色 (如 `FF0000` 或 `!white`) |
-| `scale` | number | 1 | 清晰度倍数 (1-3)，推荐 2 获得高清图片 |
+| `scale` | number | 1 | 清晰度倍数 (1-10)，推荐 2 获得高清图片（超限自动调整） |
 | `return` | string | `binary` | 返回格式: `binary`, `base64`, `url` |
 | `urlType` | string | - | URL 类型: `internal`, `external` |
 | `expires` | number | `0` | 签名URL有效期（秒），0表示永久URL |
@@ -486,6 +493,27 @@ curl "http://localhost:3000/img/Z3JhcGggTFIKICAgIEEtLT5CLS0+Qw?bgColor=!transpar
 | `PORT` | `3000` | 服务监听端口 |
 | `NODE_ENV` | - | 运行环境 (production/development) |
 
+### 渲染配置
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `USE_BROWSER_POOL` | `false` | 是否启用浏览器池模式（推荐生产环境启用，性能提升 5-10 倍） |
+| `RENDER_TIMEOUT` | `30000` | 渲染超时时间（毫秒） |
+| `MAX_WIDTH` | `10000` | 输出图片最大宽度（像素），超过会自动降低 scale |
+| `MAX_HEIGHT` | `10000` | 输出图片最大高度（像素），超过会自动降低 scale |
+| `MERMAID_CDN_URL` | `https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js` | Mermaid.js CDN 地址（仅作为 fallback） |
+| `PUPPETEER_EXECUTABLE_PATH` | `/usr/bin/chromium-browser` | Chromium 可执行文件路径 |
+
+### 浏览器池配置
+
+启用 `USE_BROWSER_POOL=true` 后生效：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `BROWSER_POOL_MAX_PAGES` | `4` | 浏览器池最大页面数（并发渲染数） |
+| `BROWSER_POOL_PAGE_IDLE_TIMEOUT` | `60000` | 页面空闲超时时间（毫秒），超时后回收 |
+| `BROWSER_POOL_HEALTH_CHECK_INTERVAL` | `30000` | 浏览器健康检查间隔（毫秒） |
+
 ### COS 配置
 
 | 变量 | 默认值 | 说明 |
@@ -497,6 +525,9 @@ curl "http://localhost:3000/img/Z3JhcGggTFIKICAgIEEtLT5CLS0+Qw?bgColor=!transpar
 | `COS_INTERNAL` | `false` | 是否使用内网上传/访问 |
 | `COS_BASE_URL` | - | 自定义 CDN 域名 (覆盖默认 URL) |
 | `COS_PATH_PREFIX` | `mermaid/` | COS 文件路径前缀 |
+| `COS_DEFAULT_EXPIRES` | `0` | 默认签名 URL 有效期（秒），0 表示永久 URL |
+| `COS_HEAD_TIMEOUT_MS` | `2000` | COS 检查文件存在超时（毫秒） |
+| `COS_UPLOAD_TIMEOUT_MS` | `60000` | COS 上传超时（毫秒） |
 
 ### 缓存配置
 
@@ -720,6 +751,63 @@ USE_BROWSER_POOL=true
 - **实验性功能**：Browser Pool 模式目前为实验性功能，在高并发场景下可能存在稳定性问题
 - **内存占用**：常驻浏览器会占用约 200-300MB 内存
 - **推荐场景**：低并发、对延迟敏感的场景（如交互式生成）
+
+---
+
+## CI/CD
+
+### GitHub Actions 自动发布
+
+项目配置了 GitHub Actions，当推送版本标签时自动构建并发布 Docker 镜像到 DockerHub。
+
+#### 触发方式
+
+1. **打标签触发**（推荐）：
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+
+2. **手动触发**：在 GitHub 仓库的 Actions 页面点击 "Run workflow"
+
+#### 配置 Secrets
+
+在 GitHub 仓库的 Settings → Secrets and variables → Actions 中配置以下 Secrets：
+
+| Secret 名称 | 说明 |
+|-------------|------|
+| `DOCKERHUB_USERNAME` | DockerHub 用户名 |
+| `DOCKERHUB_PASSWORD` | DockerHub 密码或 Access Token |
+
+> **推荐**：使用 DockerHub [Access Token](https://hub.docker.com/settings/security) 而不是密码，更安全。
+
+#### 构建产物
+
+自动构建会生成以下 Docker 镜像标签：
+
+| 标签格式 | 示例 | 说明 |
+|----------|------|------|
+| `v*.*.*` | `v1.0.0` | 完整版本号 |
+| `latest` | `latest` | 最新版本 |
+
+支持的平台架构：
+- `linux/amd64` (x86_64)
+- `linux/arm64` (Apple Silicon, ARM 服务器)
+
+#### 使用发布的镜像
+
+```bash
+# 拉取最新版本
+docker pull <your-dockerhub-username>/mermaid-render:latest
+
+# 拉取指定版本
+docker pull <your-dockerhub-username>/mermaid-render:v1.0.0
+
+# 运行
+docker run -d -p 3000:3000 \
+  -e USE_BROWSER_POOL=true \
+  <your-dockerhub-username>/mermaid-render:latest
+```
 
 ---
 

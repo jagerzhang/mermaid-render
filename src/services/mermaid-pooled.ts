@@ -9,6 +9,10 @@
 
 import { Page } from 'puppeteer-core';
 import { browserPool } from './browser-pool';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { v4 as uuidv4 } from 'uuid';
 
 export type MermaidFormat = 'svg' | 'png' | 'pdf';
 export type MermaidTheme = 'default' | 'forest' | 'dark' | 'neutral';
@@ -46,7 +50,19 @@ export const VALID_THEMES: MermaidTheme[] = ['default', 'forest', 'dark', 'neutr
 // Timeout for rendering (30 seconds)
 const RENDER_TIMEOUT = parseInt(process.env.RENDER_TIMEOUT ?? '30000', 10);
 
-// Mermaid CDN URL（使用 CDN 加载 mermaid.js）
+// 加载本地 mermaid.js（避免每次从 CDN 加载，提高速度和稳定性）
+const MERMAID_JS_PATH = path.join(__dirname, '..', 'assets', 'mermaid.min.js');
+let MERMAID_JS_CONTENT: string;
+
+try {
+  MERMAID_JS_CONTENT = fs.readFileSync(MERMAID_JS_PATH, 'utf-8');
+  console.log(`[MermaidPooled] Loaded mermaid.js from ${MERMAID_JS_PATH} (${(MERMAID_JS_CONTENT.length / 1024).toFixed(1)} KB)`);
+} catch (err) {
+  console.error(`[MermaidPooled] Failed to load mermaid.js from ${MERMAID_JS_PATH}, falling back to CDN`);
+  MERMAID_JS_CONTENT = '';
+}
+
+// CDN URL 作为 fallback
 const MERMAID_CDN_URL = process.env.MERMAID_CDN_URL ?? 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
 
 // 最大图片尺寸限制（参考 mermaid.ink 默认 10000x10000）
@@ -65,6 +81,7 @@ interface MermaidHtmlOptions {
 
 /**
  * 生成 Mermaid 图表的 HTML 页面
+ * 优先使用内嵌的 mermaid.js，避免网络请求
  */
 function generateMermaidHtml(options: MermaidHtmlOptions): string {
   const { code, theme, backgroundColor } = options;
@@ -76,6 +93,11 @@ function generateMermaidHtml(options: MermaidHtmlOptions): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+
+  // 根据是否有本地 mermaid.js 决定加载方式
+  const mermaidScript = MERMAID_JS_CONTENT
+    ? `<script>${MERMAID_JS_CONTENT}</script>`
+    : `<script src="${MERMAID_CDN_URL}"></script>`;
 
   return `
 <!DOCTYPE html>
@@ -103,7 +125,7 @@ function generateMermaidHtml(options: MermaidHtmlOptions): string {
   <div id="container">
     <pre class="mermaid">${escapedCode}</pre>
   </div>
-  <script src="${MERMAID_CDN_URL}"></script>
+  ${mermaidScript}
   <script>
     mermaid.initialize({
       startOnLoad: true,
@@ -143,10 +165,19 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
 
   const startTime = Date.now();
   let page: Page | null = null;
+  
+  // 创建临时 HTML 文件（因为内嵌 mermaid.js 后 data URL 太长会报错）
+  const tempDir = os.tmpdir();
+  const tempHtmlFile = path.join(tempDir, `mermaid-${uuidv4()}.html`);
 
   try {
     // 从池中获取 Page
     page = await browserPool.acquirePage();
+    
+    // 生成 HTML 并写入临时文件
+    const html = generateMermaidHtml({ code, theme, backgroundColor });
+    await fs.promises.writeFile(tempHtmlFile, html, 'utf-8');
+    const fileUrl = `file://${tempHtmlFile}`;
     
     // 第一步：先用 scale=1 渲染，获取基础尺寸
     await page.setViewport({
@@ -155,14 +186,9 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
       deviceScaleFactor: 1,
     });
     
-    // 生成 HTML 并加载
-    const html = generateMermaidHtml({ code, theme, backgroundColor });
-    
-    // 使用 data URL 加载 HTML（避免写文件）
-    const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
-    
-    await page.goto(dataUrl, {
-      waitUntil: 'networkidle0',
+    // 使用 domcontentloaded 而不是 networkidle0（无需等待网络，mermaid.js 已内嵌）
+    await page.goto(fileUrl, {
+      waitUntil: 'domcontentloaded',
       timeout: RENDER_TIMEOUT,
     });
 
@@ -208,8 +234,8 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
       });
 
       // 重新加载页面以应用新的 deviceScaleFactor
-      await page.goto(dataUrl, {
-        waitUntil: 'networkidle0',
+      await page.goto(fileUrl, {
+        waitUntil: 'domcontentloaded',
         timeout: RENDER_TIMEOUT,
       });
 
@@ -286,6 +312,13 @@ export async function generateMermaidDiagram(options: GenerateOptions): Promise<
     console.error(`[MermaidPooled] Failed after ${duration}ms:`, error);
     throw error;
   } finally {
+    // 清理临时文件
+    try {
+      await fs.promises.unlink(tempHtmlFile);
+    } catch {
+      // Ignore cleanup errors
+    }
+    
     // 释放 Page 回池
     if (page) {
       try {
